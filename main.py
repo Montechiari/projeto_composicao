@@ -1,29 +1,29 @@
 '''Programa que integra diversos protótipos.'''
 
-import copy
-import random
-import estruturas as est
+# import copy
+# import random
+from estruturas import Peca
+from incerto.incerto import Incerto
 import numpy as np
-from time import sleep
-import matplotlib.pyplot as plt
-import matplotlib.colors as colors
-import matplotlib.cm as cmx
-from matplotlib.collections import PatchCollection
-from matplotlib.patches import Rectangle
-import tenney as tn
-from incerto_principium.classe_incerto import IncertoPrincipium
-from makenote import Protocolo_MIDI2
-from scipy.spatial.distance import pdist
-from scipy.cluster.hierarchy import linkage, ward, fcluster, fclusterdata
-from scipy.cluster.vq import kmeans2, whiten
-from scipy.optimize import differential_evolution
-from scipy.ndimage.measurements import center_of_mass
-from evolucao import fitness
-from grafico_pb import imprime_plot
+# from time import sleep
+# import matplotlib.pyplot as plt
+# import matplotlib.colors as colors
+# import matplotlib.cm as cmx
+# from matplotlib.collections import PatchCollection
+# from matplotlib.patches import Rectangle
+# import tenney as tn
+# from makenote import Protocolo_MIDI2
+# from scipy.spatial.distance import pdist
+# from scipy.cluster.hierarchy import linkage, ward, fcluster, fclusterdata
+# from scipy.cluster.vq import kmeans2, whiten
+# from scipy.optimize import differential_evolution
+# from scipy.ndimage.measurements import center_of_mass
+# from evolucao import fitness
+# from grafico_pb import imprime_plot
 
 
-TENSOES = [0, 7, 5, 4, 9, 3, 8, 2, 10, 1, 11, 6]
 PESOS = [22.5, 3, 1, 20]
+
 MIDI2PHON = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
              0.0, 0.0, 0.0, 0.0, 0.013, 0.036, 0.062, 0.087, 0.113, 0.138,
              0.164, 0.19, 0.215, 0.24, 0.265, 0.29, 0.313, 0.336, 0.358,
@@ -41,36 +41,52 @@ MIDI2PHON = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
              0.753]
 
 
+class Note():
+    def __init__(self, onset, pitch, velocity, duration):
+        self.onset = onset
+        self.pitch = pitch
+        self.velocity = velocity
+        self.duration = duration
+
+
 class Partitura():
-        def __init__(self, nome_arquivo, listas, tempo_final):
-            self.listas = listas
-            self.duracao_total = tempo_final
-            self.incerto = IncertoPrincipium()
-            self.nome_arquivo = nome_arquivo
-            self.lista_de_notas = self.ativa()
+    def __init__(self, nome_arquivo, lista_de_perfis,
+                 duracao_total, seed_to_generator=None):
 
-        def ativa(self):
-            saida = []
-            tempo_total = 0
-            try:
-                while tempo_total < self.duracao_total:
-                    informacoes = [float(i[int(tempo_total * 5)])
-                                   for i in self.listas]
+        self.nome_arquivo = nome_arquivo
+        self.lista_de_perfis = lista_de_perfis
+        self.duracao_total = duracao_total
+        self.gerador_melodico = Incerto(given_seed=seed_to_generator)
+        self.lista_de_notas = self.ativa()
 
-                    nota = self.incerto.proxima_nota(informacoes[2])
-                    nota[0] += np.round(informacoes[3])
-                    nota[1] *= informacoes[0] + np.random.randint(24) - 12
-                    nota[2] *= informacoes[1]
+    def ativa(self):
+        try:
+            saida, tempo_atual = [], 0
+            informacoes = [float(i[int(tempo_atual * 5)])
+                           for i in self.lista_de_perfis]
 
-                    saida.append([tempo_total,
-                                  int(nota[0]),
-                                  int(round(nota[1])),
-                                  nota[2]])
+            while tempo_atual < self.duracao_total:
+                prior_note = self.new_note(tempo_atual, informacoes[2])
+                transformed_note = self.apply_contours_to_note(prior_note,
+                                                               informacoes)
+                saida.append(transformed_note)
+                tempo_atual += transformed_note.duration
 
-                    tempo_total += nota[2]
-            except IndexError:
-                print('fim com erro de indice. (thread IncertoOffline)')
-            return saida
+        except IndexError as e:
+            print(e)
+        return saida
+
+    def new_note(self, onset_time,  argument_for_generator):
+        note = self.gerador_melodico.draw_note(argument_for_generator)
+        onset = [onset_time]
+        return Note(*(onset + note))
+
+    def apply_contours_to_note(self, note, contour_information):
+        new_pitch = int(note.pitch + np.round(contour_information[3]))
+        new_velocity = int(note.velocity * (contour_information[0] +
+                           np.random.randint(24) - 12))
+        new_duration = note.duration * contour_information[1] * 0.001
+        return Note(note.onset, new_pitch, new_velocity, new_duration)
 
 
 def gera_seed():
@@ -80,59 +96,52 @@ def gera_seed():
 if __name__ == '__main__':
 
     # Inicia Seeds automaticamente
-    SEED_PERFIS = gera_seed()
-    SEED_INCERTO = gera_seed()
+    SEED_PERFIS_PARAMETRICOS = gera_seed()
+    SEED_GERADOR_MELODICO = gera_seed()
 
     # Atualiza seed de perfis
-    np.random.seed(SEED_PERFIS)
+    np.random.seed(SEED_PERFIS_PARAMETRICOS)
 
     # Cria instancia de peca
-    peca = est.Peca([47, 90], [10, 115])
+    peca = Peca([47, 90], [10, 115])
     perfis_prontos = peca.contornos_normalizados
 
     # Imprime dados da peca
-    print('seed perfis:', SEED_PERFIS, 'seed incerteza:', SEED_INCERTO)
+    print('seed perfis:', SEED_PERFIS_PARAMETRICOS,
+          'seed incerteza:', SEED_GERADOR_MELODICO)
     print('duracao total:', peca.duracao)
     print('quantidade de seções:', len(peca.contidos), '\n')
 
-    # Atualiza seed
-    np.random.seed(SEED_INCERTO)
-
-    partitura = Partitura('_'.join([str(SEED_PERFIS),
-                                    str(SEED_INCERTO)]),
+    partitura = Partitura('_'.join([str(SEED_PERFIS_PARAMETRICOS),
+                                    str(SEED_GERADOR_MELODICO)]),
                           perfis_prontos, peca.duracao)
 
-    # SEPARA NOTAS E PAUSAS
-    lista_notas, lista_pausas = [], []
     for nota in partitura.lista_de_notas:
-        if nota[2] == 0:
-            lista_pausas.append(nota)
-        else:
-            lista_notas.append(nota)
+        print(nota.onset, nota.pitch, nota.velocity, nota.duration)
+
+'''
+    # SEPARA NOTAS E PAUSAS
+    # lista_notas, lista_pausas = [], []
+    # for nota in partitura.lista_de_notas:
+        # if nota[2] == 0:
+            # lista_pausas.append(nota)
+        # else:
+    #         lista_notas.append(nota)
 
     # ____________________________________________________________________
     # INTENSIDADE
 
     gestos = [np.log1p(nota[3] / lista_notas[i - 1][3]) * MIDI2PHON[nota[1]]
               for i, nota in enumerate(lista_notas)]
-    # gestos = []
-    # for i in range(1, len(lista_notas)):
-    #     aceleracao = np.log1p(lista_notas[i][3] /
-    #                           lista_notas[i - 1][3]) * 100
-    #     intervalo = abs(lista_notas[i - 1][1] -
-    #                     lista_notas[i][1]) % 12
-    #     tensao = 12 - TENSOES.index(intervalo)
-
-    #     # EQUACAO PARA GESTUAL
-    #     gestos.append((2 * aceleracao) + tensao)
-
     gestos = list(np.interp(gestos, (min(gestos), max(gestos)), (0, 127)))
     gestos.insert(0, lista_notas[0][2])
-    andamentos = [partitura.listas[1][int(nota[0] * 5)]
+
+    andamentos = [partitura.lista_de_perfis[1][int(nota[0] * 5)]
                   for nota in lista_notas]
     andamentos = np.interp(andamentos,
                            (min(andamentos), max(andamentos)),
                            (0, 1))
+
     for i, nota in enumerate(lista_notas):
         if nota[2] < 0:
             nota[2] = 0
@@ -143,7 +152,8 @@ if __name__ == '__main__':
         # Equacao para reunir diferentes fatores da intensidade
         x = ((nota[2] * peso1) + (gestos[i] * peso2)) * 0.7
         nota[2] = int(x + (127 * 0.3))
-    # # ____________________________________________________________________
+
+     # ____________________________________________________________________
 
     # SEPARA OS CLANGS
     lista_clangs = tn.separa_clangs(lista_notas, PESOS)
@@ -160,11 +170,11 @@ if __name__ == '__main__':
             ponto[i] /= len(secao)
         centros_secs.append(ponto)
 
-    ''' ‘braycurtis’, ‘canberra’, ‘chebyshev’, ‘cityblock’, ‘correlation’,
+    ‘braycurtis’, ‘canberra’, ‘chebyshev’, ‘cityblock’, ‘correlation’,
     ‘cosine’, ‘dice’, ‘euclidean’, ‘hamming’, ‘jaccard’, ‘jensenshannon’,
     ‘kulsinski’, ‘mahalanobis’, ‘matching’, ‘minkowski’, ‘rogerstanimoto’,
     ‘russellrao’, ‘seuclidean’, ‘sokalmichener’, ‘sokalsneath’, ‘sqeuclidean’,
-    ‘yule’.'''
+    ‘yule’
 
     # 'seuclidean' eh bom para criar diferencas em ataque, ‘mahalanobis’ tbm
     # 'jaccard'
@@ -291,14 +301,14 @@ if __name__ == '__main__':
 
     # imprime_plot(lista_notas,
     #              peca.contornos_basicos,
-    #              ''.join(['./figuras/', str(SEED_INCERTO),
-    #                       '_', str(SEED_PERFIS), '.png']))
+    #              ''.join(['./figuras/', str(SEED_GERADOR_MELODICO),
+    #                       '_', str(SEED_PERFIS_PARAMETRICOS), '.png']))
 
     # imprime_plot(lista_notas,
     #              lista_clangs,
     #              secoes_plana,
-    #              ''.join(['./figuras/', str(SEED_INCERTO),
-    #                       '_', str(SEED_PERFIS), '.png']))
+    #              ''.join(['./figuras/', str(SEED_GERADOR_MELODICO),
+    #                       '_', str(SEED_PERFIS_PARAMETRICOS), '.png']))
 
     # GRAFICOS ___________________________________________________________
     # fig = plt.figure(figsize=(5, 2), dpi=300)
@@ -376,3 +386,4 @@ if __name__ == '__main__':
         sleep(partitura.lista_de_notas[i][3])
     sleep(1)
     tocador.finalizar()
+'''

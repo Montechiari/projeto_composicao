@@ -1,7 +1,9 @@
 from numpy.random import randint, normal, choice, seed
 from numpy import linspace
+import os
 
-PATH_TO_CHAIN_FILES = 'incerto/chains/'
+PATH_TO_CHAIN_FILES = ''.join([os.path.dirname(os.path.abspath(__file__)),
+                               '/chains/'])
 STANDARD_DEVIATION = 60
 DEPTH_BETWEEN_TABLES = 1000
 

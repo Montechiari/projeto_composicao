@@ -64,7 +64,7 @@ class Peca(Estrutura):
                         [0.4, 1.8])
         self.faz_perfil('incerteza', [0.1 / self.duracao,
                                       1.7 / self.duracao],
-                        [0, 20])
+                        [0, 0.999])
         self.faz_perfil('transposicao', [0.5 / self.duracao,
                                          1.5 / self.duracao],
                         [-10, 14])
