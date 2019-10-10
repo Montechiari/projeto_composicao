@@ -92,6 +92,25 @@ class Partitura():
         new_duration = note.duration * contour_information[1] * 0.001
         return Note(note.onset, new_pitch, new_velocity, new_duration)
 
+    def get_notes_not_pauses(self):
+        try:
+            self.notes_not_pauses
+        except AttributeError:
+            self.notes_not_pauses = [note.get_params()
+                                     for note in self.lista_de_notas
+                                     if note.velocity > 0]
+        finally:
+            return self.notes_not_pauses
+
+    def get_all_notes(self):
+        try:
+            self.all_notes
+        except AttributeError:
+            self.all_notes = [note.get_params()
+                              for note in self.lista_de_notas]
+        finally:
+            return self.all_notes
+
 
 def gera_seed():
     return np.random.randint(0, 4294967295, dtype='uint32')
@@ -120,8 +139,11 @@ if __name__ == '__main__':
                                     str(SEED_GERADOR_MELODICO)]),
                           perfis_prontos, peca.duracao)
 
-    for nota in partitura.lista_de_notas:
-        print(nota.onset, nota.pitch, nota.velocity, nota.duration)
+    for nota in partitura.get_all_notes():
+        print(nota)
+
+    for nota in partitura.get_notes_not_pauses():
+        print(nota)
 
 '''
     # SEPARA NOTAS E PAUSAS
