@@ -48,6 +48,10 @@ class Note():
         self.velocity = velocity
         self.duration = duration
 
+    def get_params(self):
+        return [np.round(self.onset, 3), self.pitch,
+                self.velocity, np.round(self.duration, 3)]
+
 
 class Partitura():
     def __init__(self, nome_arquivo, lista_de_perfis,
