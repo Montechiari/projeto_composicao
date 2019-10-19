@@ -4,6 +4,7 @@
 # import random
 from estruturas import Peca
 from incerto.incerto import Incerto
+import intensities
 import numpy as np
 # from time import sleep
 # import matplotlib.pyplot as plt
@@ -23,22 +24,6 @@ import numpy as np
 
 
 PESOS = [22.5, 3, 1, 20]
-
-MIDI2PHON = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-             0.0, 0.0, 0.0, 0.0, 0.013, 0.036, 0.062, 0.087, 0.113, 0.138,
-             0.164, 0.19, 0.215, 0.24, 0.265, 0.29, 0.313, 0.336, 0.358,
-             0.38, 0.4, 0.42, 0.438, 0.456, 0.474, 0.492, 0.51, 0.528,
-             0.545, 0.562, 0.578, 0.595, 0.612, 0.627, 0.642, 0.657,
-             0.672, 0.687, 0.702, 0.716, 0.731, 0.745, 0.759, 0.771,
-             0.785, 0.797, 0.81, 0.823, 0.835, 0.847, 0.859, 0.871, 0.883,
-             0.895, 0.906, 0.916, 0.927, 0.937, 0.946, 0.955, 0.964,
-             0.971, 0.979, 0.985, 0.99, 0.995, 0.998, 0.999, 1.0, 0.999,
-             0.996, 0.991, 0.986, 0.979, 0.97, 0.961, 0.953, 0.945, 0.941,
-             0.942, 0.947, 0.957, 0.971, 0.987, 1.003, 1.02, 1.035, 1.05,
-             1.063, 1.074, 1.082, 1.085, 1.082, 1.072, 1.053, 1.029,
-             1.004, 0.98, 0.956, 0.933, 0.912, 0.892, 0.872, 0.855, 0.839,
-             0.823, 0.809, 0.795, 0.78, 0.766, 0.753, 0.744, 0.738, 0.74,
-             0.753]
 
 
 class Note():
@@ -61,17 +46,17 @@ class Partitura():
         self.lista_de_perfis = lista_de_perfis
         self.duracao_total = duracao_total
         self.gerador_melodico = Incerto(given_seed=seed_to_generator)
-        self.lista_de_notas = self.ativa()
+        self.lista_de_notas = self.start()
 
-    def ativa(self):
+    def start(self):
         try:
             saida, tempo_atual = [], 0
-            informacoes = [float(i[int(tempo_atual * 5)])
-                           for i in self.lista_de_perfis]
+            informacoes = [float(contour[int(tempo_atual * 5)])
+                           for contour in self.lista_de_perfis]
 
             while tempo_atual < self.duracao_total:
-                prior_note = self.new_note(tempo_atual, informacoes[2])
-                transformed_note = self.apply_contours_to_note(prior_note,
+                raw_note = self.new_note(tempo_atual, informacoes[2])
+                transformed_note = self.apply_contours_to_note(raw_note,
                                                                informacoes)
                 saida.append(transformed_note)
                 tempo_atual += transformed_note.duration
@@ -96,7 +81,7 @@ class Partitura():
         try:
             self.notes_not_pauses
         except AttributeError:
-            self.notes_not_pauses = [note.get_params()
+            self.notes_not_pauses = [note
                                      for note in self.lista_de_notas
                                      if note.velocity > 0]
         finally:
@@ -106,10 +91,20 @@ class Partitura():
         try:
             self.all_notes
         except AttributeError:
-            self.all_notes = [note.get_params()
+            self.all_notes = [note
                               for note in self.lista_de_notas]
         finally:
             return self.all_notes
+
+    def derive_intensities(self):
+        note_list = self.get_notes_not_pauses()
+        gesture_component = intensities.get_gesture_component(note_list)
+        tempo_modifier = intensities.get_tempo_at_onsets(
+                                                    note_list,
+                                                    self.lista_de_perfis[2]
+                                                         )
+        intensities.apply_intensity_formula(note_list, gesture_component,
+                                            tempo_modifier)
 
 
 def gera_seed():
@@ -138,48 +133,14 @@ if __name__ == '__main__':
     partitura = Partitura('_'.join([str(SEED_PERFIS_PARAMETRICOS),
                                     str(SEED_GERADOR_MELODICO)]),
                           perfis_prontos, peca.duracao)
+    partitura.derive_intensities()
 
-    for nota in partitura.get_all_notes():
-        print(nota)
-
-    for nota in partitura.get_notes_not_pauses():
-        print(nota)
+    for note in partitura.get_all_notes():
+        print(note.get_params())
 
 '''
-    # SEPARA NOTAS E PAUSAS
-    # lista_notas, lista_pausas = [], []
-    # for nota in partitura.lista_de_notas:
-        # if nota[2] == 0:
-            # lista_pausas.append(nota)
-        # else:
-    #         lista_notas.append(nota)
 
-    # ____________________________________________________________________
-    # INTENSIDADE
-
-    gestos = [np.log1p(nota[3] / lista_notas[i - 1][3]) * MIDI2PHON[nota[1]]
-              for i, nota in enumerate(lista_notas)]
-    gestos = list(np.interp(gestos, (min(gestos), max(gestos)), (0, 127)))
-    gestos.insert(0, lista_notas[0][2])
-
-    andamentos = [partitura.lista_de_perfis[1][int(nota[0] * 5)]
-                  for nota in lista_notas]
-    andamentos = np.interp(andamentos,
-                           (min(andamentos), max(andamentos)),
-                           (0, 1))
-
-    for i, nota in enumerate(lista_notas):
-        if nota[2] < 0:
-            nota[2] = 0
-        elif nota[2] > 127:
-            nota[2] = 127
-        peso1 = (andamentos[i] * 0.25)
-        peso2 = 1 - peso1
-        # Equacao para reunir diferentes fatores da intensidade
-        x = ((nota[2] * peso1) + (gestos[i] * peso2)) * 0.7
-        nota[2] = int(x + (127 * 0.3))
-
-     # ____________________________________________________________________
+    TODO:
 
     # SEPARA OS CLANGS
     lista_clangs = tn.separa_clangs(lista_notas, PESOS)
